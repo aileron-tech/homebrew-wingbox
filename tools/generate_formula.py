@@ -2,7 +2,9 @@
 
 usage: python3 tools/generate_formula.py [VERSION] > Formula/wingbox.rb
 
-Without VERSION the latest release on PyPI is used. The formula installs the
+Without VERSION the newest final release in the PyPI index is used (read from
+the index of files, not from the "latest" metadata page, which a cache can
+serve stale for a while after an upload). The formula installs the
 Wingbox wheel and the wheels of its pinned dependencies; every file is pinned
 by the sha256 that PyPI publishes, so pip refuses anything else.
 """
@@ -18,6 +20,9 @@ from typing import Any, Callable
 PACKAGE = "wingbox"
 PYTHON = "3.13"
 INDEX = "https://pypi.org/pypi"
+SIMPLE = "https://pypi.org/simple"
+SIMPLE_JSON = "application/vnd.pypi.simple.v1+json"
+_FINAL = re.compile(r"^\d+(\.\d+)*$")
 # Wheels a Homebrew Python can load: this interpreter or the stable ABI, on macOS or glibc Linux.
 _INTERPRETER = re.compile(rf"-(cp{PYTHON.replace('.', '')}-cp{PYTHON.replace('.', '')}|cp3\d+-abi3|py3-none)-")
 _PLATFORM = re.compile(r"(macosx_\d+_\d+_(x86_64|arm64|universal2)|manylinux\S*_(x86_64|aarch64)|-any)\.whl$")
@@ -74,8 +79,18 @@ def pins_of(requires_dist: list[str] | None) -> tuple[tuple[str, str], ...]:
     return tuple(sorted(pins))
 
 
-def read_release(fetch: Fetch, version: str | None) -> Release:
-    metadata = fetch(f"{INDEX}/{PACKAGE}/{version}/json" if version else f"{INDEX}/{PACKAGE}/json")
+def newest_final(versions: list[str]) -> str:
+    """The highest version made of numbers only (no pre-release, dev or post marker)."""
+    final = [version for version in versions if _FINAL.match(version)]
+    if not final:
+        raise MetadataError("the index lists no final release")
+    return max(final, key=lambda version: tuple(int(part) for part in version.split(".")))
+
+
+def read_release(fetch: Fetch, version: str) -> Release:
+    metadata = fetch(f"{INDEX}/{PACKAGE}/{version}/json")
+    if metadata["info"]["version"] != version:
+        raise MetadataError(f"asked for {version}, the index answered {metadata['info']['version']}")
     own = wheels_of(metadata)
     if len(own) != 1:
         raise MetadataError(f"expected one {PACKAGE} wheel, found {len(own)}")
@@ -153,13 +168,15 @@ end
 
 
 def fetch_json(url: str) -> dict[str, Any]:
-    with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310 - fixed https index URL
+    request = urllib.request.Request(url, headers={"Accept": SIMPLE_JSON if url.startswith(SIMPLE) else "application/json"})
+    with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 - fixed https index URL
         return json.load(response)
 
 
 def main(arguments: list[str]) -> int:
     try:
-        release = read_release(fetch_json, arguments[0] if arguments else None)
+        version = arguments[0] if arguments else newest_final(fetch_json(f"{SIMPLE}/{PACKAGE}/")["versions"])
+        release = read_release(fetch_json, version)
     except (MetadataError, OSError, KeyError) as error:
         print(f"generate_formula: {error}", file=sys.stderr)
         return 1
