@@ -1,0 +1,46 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+  HOMEBREW_NO_ENV_HINTS: "1"
+
+jobs:
+  generated:
+    # The formula in the repository is exactly what the generator prints for its version.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Formula equals the generator output
+        run: |
+          version="$(sed -n 's/^  version "\(.*\)"$/\1/p' Formula/wingbox.rb)"
+          python3 tools/generate_formula.py "$version" | diff - Formula/wingbox.rb
+
+  formula:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      # Sets up Homebrew and taps this repository at the commit under test.
+      - uses: Homebrew/actions/setup-homebrew@main
+      - name: Style
+        run: brew style aileron-tech/wingbox
+      - name: Install
+        run: brew install aileron-tech/wingbox/wingbox
+      - name: Test
+        run: brew test aileron-tech/wingbox/wingbox
+      - name: The command on PATH
+        run: wingbox --version
