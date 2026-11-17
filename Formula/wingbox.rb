@@ -14,27 +14,8 @@ class Wingbox < Formula
   def install
     python = formula_opt_bin("python@3.13")/"python3.13"
     virtualenv_create(libexec, "python3.13", system_site_packages: false)
-    (buildpath/"requirements.txt").write pinned_wheels
-    pip = [python, "-m", "pip", "--python=#{libexec}/bin/python", "install",
-           "--no-deps", "--only-binary=:all:", "--disable-pip-version-check", "--no-input"]
-    system(*pip, "--require-hashes", "-r", buildpath/"requirements.txt")
-    system(*pip, buildpath/"wingbox-0.9.0-py3-none-any.whl")
-    bin.install_symlink libexec/"bin/wingbox"
-  end
-
-  def caveats
-    <<~EOS
-      Set up your coding assistants (Claude Code, Codex, Cursor, Copilot):
-        wingbox install
-      Upgrade with:
-        brew upgrade wingbox
-    EOS
-  end
-
-  # The wheels of the pinned dependencies, by the sha256 PyPI publishes for each.
-  # (Not named `requirements`: Formula has a method of that name.)
-  def pinned_wheels
-    <<~EOS
+    # The wheels of the pinned dependencies, by the sha256 PyPI publishes for each.
+    (buildpath/"requirements.txt").write <<~EOS
       pyyaml==6.0.3 \
           --hash=sha256:8da9669d359f02c0b91ccc01cac4a67f16afec0dac22c2ad09f46bee0697eba8 \
           --hash=sha256:2283a07e2c21a2aa78d9c4442724ec1eb15f5e42a723b99cb3d822d48f5f7ad1 \
@@ -80,6 +61,20 @@ class Wingbox < Formula
           --hash=sha256:c7cc1b0ff5d91bac863b0e38b1578d5505e718156c9db577c8baea2557f66de8 \
           --hash=sha256:4b1eed5b0b3a8134e86126b00b743d667ec27c63fc9de1b7bb23168803879e31 \
           --hash=sha256:e96d36b85bcacdeb8ff5c2618d75593ef12ebaf1b4eace3477e2bdb2abb1752c
+    EOS
+    pip = [python, "-m", "pip", "--python=#{libexec}/bin/python", "install",
+           "--no-deps", "--only-binary=:all:", "--disable-pip-version-check", "--no-input"]
+    system(*pip, "--require-hashes", "-r", buildpath/"requirements.txt")
+    system(*pip, buildpath/"wingbox-0.9.0-py3-none-any.whl")
+    bin.install_symlink libexec/"bin/wingbox"
+  end
+
+  def caveats
+    <<~EOS
+      Set up your coding assistants (Claude Code, Codex, Cursor, Copilot):
+        wingbox install
+      Upgrade with:
+        brew upgrade wingbox
     EOS
   end
 

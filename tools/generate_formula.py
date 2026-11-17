@@ -118,7 +118,10 @@ class Wingbox < Formula
   def install
     python = formula_opt_bin("python@{PYTHON}")/"python{PYTHON}"
     virtualenv_create(libexec, "python{PYTHON}", system_site_packages: false)
-    (buildpath/"requirements.txt").write pinned_wheels
+    # The wheels of the pinned dependencies, by the sha256 PyPI publishes for each.
+    (buildpath/"requirements.txt").write <<~EOS
+{pinned}
+    EOS
     pip = [python, "-m", "pip", "--python=#{{libexec}}/bin/python", "install",
            "--no-deps", "--only-binary=:all:", "--disable-pip-version-check", "--no-input"]
     system(*pip, "--require-hashes", "-r", buildpath/"requirements.txt")
@@ -132,14 +135,6 @@ class Wingbox < Formula
         wingbox install
       Upgrade with:
         brew upgrade wingbox
-    EOS
-  end
-
-  # The wheels of the pinned dependencies, by the sha256 PyPI publishes for each.
-  # (Not named `requirements`: Formula has a method of that name.)
-  def pinned_wheels
-    <<~EOS
-{pinned}
     EOS
   end
 
