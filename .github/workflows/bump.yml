@@ -29,6 +29,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Compare with the latest release on PyPI
         id: compare
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           python3 tools/generate_formula.py > "$RUNNER_TEMP/wingbox.rb"
           if cmp -s "$RUNNER_TEMP/wingbox.rb" Formula/wingbox.rb; then
@@ -48,6 +50,8 @@ jobs:
       - uses: Homebrew/actions/setup-homebrew@main
       - name: Regenerate
         id: regenerate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           cd "$(brew --repository aileron-tech/wingbox)"
           python3 tools/generate_formula.py > "$RUNNER_TEMP/wingbox.rb"

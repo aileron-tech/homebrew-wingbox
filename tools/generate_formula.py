@@ -2,15 +2,17 @@
 
 usage: python3 tools/generate_formula.py [VERSION] > Formula/wingbox.rb
 
-Without VERSION the newest final release in the PyPI index is used (read from
-the index of files, not from the "latest" metadata page, which a cache can
-serve stale for a while after an upload). The formula installs the
+Without VERSION the newest final release is used: the highest of the versions
+in the PyPI file index and the latest GitHub release of the project. PyPI's
+cache can serve the index without a new version for a while after an upload;
+the GitHub release names it at once. The formula installs the
 Wingbox wheel and the wheels of its pinned dependencies; every file is pinned
 by the sha256 that PyPI publishes, so pip refuses anything else.
 """
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import urllib.request
@@ -22,6 +24,7 @@ PYTHON = "3.13"
 INDEX = "https://pypi.org/pypi"
 SIMPLE = "https://pypi.org/simple"
 SIMPLE_JSON = "application/vnd.pypi.simple.v1+json"
+LATEST_RELEASE = "https://api.github.com/repos/aileron-tech/wingbox/releases/latest"
 _FINAL = re.compile(r"^\d+(\.\d+)*$")
 # Wheels a Homebrew Python can load: this interpreter or the stable ABI, on macOS or glibc Linux.
 _INTERPRETER = re.compile(rf"-(cp{PYTHON.replace('.', '')}-cp{PYTHON.replace('.', '')}|cp3\d+-abi3|py3-none)-")
@@ -85,6 +88,16 @@ def newest_final(versions: list[str]) -> str:
     if not final:
         raise MetadataError("the index lists no final release")
     return max(final, key=lambda version: tuple(int(part) for part in version.split(".")))
+
+
+def known_newest(fetch: Fetch) -> str:
+    """The newest final version named by the PyPI file index or by the latest GitHub release."""
+    versions = list(fetch(f"{SIMPLE}/{PACKAGE}/")["versions"])
+    try:
+        versions.append(str(fetch(LATEST_RELEASE)["tag_name"]).removeprefix("v"))
+    except (OSError, KeyError) as error:
+        print(f"generate_formula: GitHub release not read ({error}); using the PyPI index alone", file=sys.stderr)
+    return newest_final(versions)
 
 
 def read_release(fetch: Fetch, version: str) -> Release:
@@ -168,14 +181,18 @@ end
 
 
 def fetch_json(url: str) -> dict[str, Any]:
-    request = urllib.request.Request(url, headers={"Accept": SIMPLE_JSON if url.startswith(SIMPLE) else "application/json"})
+    headers = {"Accept": SIMPLE_JSON if url.startswith(SIMPLE) else "application/json"}
+    token = os.environ.get("GITHUB_TOKEN")
+    if token and url.startswith("https://api.github.com/"):
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 - fixed https index URL
         return json.load(response)
 
 
 def main(arguments: list[str]) -> int:
     try:
-        version = arguments[0] if arguments else newest_final(fetch_json(f"{SIMPLE}/{PACKAGE}/")["versions"])
+        version = arguments[0] if arguments else known_newest(fetch_json)
         release = read_release(fetch_json, version)
     except (MetadataError, OSError, KeyError) as error:
         print(f"generate_formula: {error}", file=sys.stderr)
