@@ -68,15 +68,28 @@ def wheels_of(metadata: dict[str, Any]) -> tuple[Wheel, ...]:
     return tuple(Wheel(f["filename"], f["url"], f["digests"]["sha256"]) for f in sorted(files, key=lambda f: f["filename"]))
 
 
+def holds_on_homebrew(marker: str) -> bool:
+    """Whether a dependency with this environment marker is installed by the formula. No marker: yes.
+    Homebrew runs on macOS and Linux, so a marker whose alternatives include "not on Windows"
+    (`sys_platform != "win32" or ...`) always holds there. Any other marker is refused: the formula has one
+    list of resources and cannot follow a condition."""
+    text = marker.strip()
+    if not text:
+        return True
+    clauses = [clause.strip().replace("'", '"').replace(" ", "") for clause in text.split(" or ")]
+    return 'sys_platform!="win32"' in clauses and " and " not in text and "(" not in text
+
+
 def pins_of(requires_dist: list[str] | None) -> tuple[tuple[str, str], ...]:
-    """The required dependencies; each must be pinned to one version. Extras are left out."""
+    """The required dependencies; each must be pinned to one version. Extras are left out, and so is nothing
+    else: a dependency under a marker that does not always hold on macOS and Linux is an error."""
     pins: list[tuple[str, str]] = []
     for line in requires_dist or []:
         requirement, _, marker = line.partition(";")
         if "extra ==" in marker:
             continue
         found = _PIN.match(requirement.strip().replace(" ", ""))
-        if not found or marker.strip():
+        if not found or not holds_on_homebrew(marker):
             raise MetadataError(f"dependency is not pinned to one version: {line}")
         pins.append((found.group(1).lower(), found.group(2)))
     return tuple(sorted(pins))
